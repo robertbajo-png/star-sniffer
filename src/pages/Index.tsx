@@ -1,12 +1,37 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useEffect } from "react";
+import { PikachuGame } from "@/components/PikachuGame";
 
 const Index = () => {
+  useEffect(() => {
+    document.title = "Pikachu Dash – Geometry Style Game";
+    const desc = "Help Pikachu dash through obstacles with flying and gravity modes.";
+    let meta = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "description";
+      document.head.appendChild(meta);
+    }
+    meta.content = desc;
+
+    let canonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    if (!canonical) {
+      canonical = document.createElement("link");
+      canonical.rel = "canonical";
+      canonical.href = window.location.origin + "/";
+      document.head.appendChild(canonical);
+    } else {
+      canonical.href = window.location.origin + "/";
+    }
+  }, []);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="sr-only">
+        <h1>Pikachu Dash - Geometry Style Game</h1>
+      </header>
+      <main className="flex items-center justify-center">
+        <PikachuGame />
+      </main>
     </div>
   );
 };
