@@ -20,6 +20,15 @@ interface FlyingObstacle extends GameObject {
   speed: number;
 }
 
+interface BackgroundPokemon {
+  id: number;
+  x: number;
+  y: number;
+  sprite: string;
+  size: number;
+  opacity: number;
+}
+
 // Responsive game dimensions
 const getGameDimensions = () => {
   const isMobile = window.innerWidth < 768;
@@ -69,12 +78,35 @@ export const PikachuGame = () => {
   const [gravityUp, setGravityUp] = useState(false);
   const [flyingModeChangedAt, setFlyingModeChangedAt] = useState<number | null>(null);
   const [gengarModeChangedAt, setGengarModeChangedAt] = useState<number | null>(null);
+  const [backgroundPokemon, setBackgroundPokemon] = useState<BackgroundPokemon[]>([]);
 
   const gameLoopRef = useRef<number>();
   const spikeIdCounter = useRef(0);
   const flyingObstacleIdCounter = useRef(0);
 
   const groundY = gameHeight - GROUND_HEIGHT;
+
+  // Initialize background Pokemon
+  useEffect(() => {
+    const sprites = [
+      "/lovable-uploads/2c373f45-ab6b-45ba-a70a-8609e02d54cd.png",
+      gengarSprite,
+      charizardSprite
+    ];
+    
+    const pokemon: BackgroundPokemon[] = [];
+    for (let i = 0; i < 8; i++) {
+      pokemon.push({
+        id: i,
+        x: Math.random() * gameWidth,
+        y: Math.random() * (gameHeight - GROUND_HEIGHT - 100) + 50,
+        sprite: sprites[Math.floor(Math.random() * sprites.length)],
+        size: Math.random() * 30 + 25,
+        opacity: Math.random() * 0.2 + 0.1
+      });
+    }
+    setBackgroundPokemon(pokemon);
+  }, [gameWidth, gameHeight]);
 
   // Handle window resize
   useEffect(() => {
@@ -517,6 +549,28 @@ export const PikachuGame = () => {
             {gameState === 'playing' ? '⏸️' : '▶️'}
           </Button>
         )}
+
+        {/* Background Pokemon */}
+        {backgroundPokemon.map(pokemon => (
+          <div
+            key={pokemon.id}
+            className="absolute animate-float"
+            style={{
+              left: pokemon.x,
+              bottom: gameHeight - pokemon.y - pokemon.size,
+              width: pokemon.size,
+              height: pokemon.size,
+              opacity: pokemon.opacity,
+              animationDelay: `${pokemon.id * 0.3}s`
+            }}
+          >
+            <img
+              src={pokemon.sprite}
+              alt="Background Pokemon"
+              className="w-full h-full object-contain"
+            />
+          </div>
+        ))}
 
         {/* Ground */}
         <div
