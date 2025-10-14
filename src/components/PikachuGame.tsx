@@ -437,7 +437,11 @@ export const PikachuGame = () => {
 
       if (e.code === 'Space' || e.code === 'ArrowUp') {
         e.preventDefault();
-        jump();
+        if (gameState === 'menu') {
+          startGame();
+        } else {
+          jump();
+        }
       }
       if (gameState === 'playing') {
         setKeys(prev => ({ ...prev, [e.code]: true }));
