@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import pikachuSprite from "@/assets/pikachu.png";
 import gengarSprite from "@/assets/gengar-sprite.png";
 import charizardSprite from "@/assets/charizard-sprite.png";
 
@@ -38,8 +39,6 @@ const getGameDimensions = () => {
   };
 };
 
-const GAME_WIDTH = 800;
-const GAME_HEIGHT = 400;
 const GROUND_HEIGHT = 50;
 const PLAYER_SIZE = 50;
 const SPIKE_WIDTH = 25;
@@ -61,7 +60,7 @@ export const PikachuGame = () => {
 
   const [player, setPlayer] = useState<GameObject>({
     x: 100,
-    y: GAME_HEIGHT - GROUND_HEIGHT - PLAYER_SIZE,
+    y: getGameDimensions().height - GROUND_HEIGHT - PLAYER_SIZE,
     width: PLAYER_SIZE,
     height: PLAYER_SIZE
   });
@@ -89,7 +88,7 @@ export const PikachuGame = () => {
   // Initialize background Pokemon
   useEffect(() => {
     const sprites = [
-      "/lovable-uploads/2c373f45-ab6b-45ba-a70a-8609e02d54cd.png",
+      pikachuSprite,
       gengarSprite,
       charizardSprite
     ];
@@ -596,7 +595,7 @@ export const PikachuGame = () => {
                 className="w-full h-full object-contain animate-pulse-neon bg-transparent"
               />
               <img
-                src="/lovable-uploads/2c373f45-ab6b-45ba-a70a-8609e02d54cd.png"
+                src={pikachuSprite}
                 alt="Pikachu"
                 className="absolute top-2 left-1/2 transform -translate-x-1/2 w-6 h-6 object-contain"
               />
@@ -609,7 +608,7 @@ export const PikachuGame = () => {
             />
           ) : (
             <img
-              src="/lovable-uploads/2c373f45-ab6b-45ba-a70a-8609e02d54cd.png"
+              src={pikachuSprite}
               alt="Pikachu"
               className="w-full h-full object-contain animate-pulse-neon bg-transparent"
             />
