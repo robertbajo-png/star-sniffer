@@ -522,7 +522,7 @@ export const PikachuGame = () => {
               </div>
 
               {gameState !== "playing" && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/60 text-center backdrop-blur-sm">
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/60 text-center backdrop-blur-sm">
                   <p className="text-lg font-semibold uppercase tracking-[0.3em] text-white/80">
                     {gameState === "menu" ? "Tap to Start" : "You got this!"}
                   </p>
@@ -533,7 +533,7 @@ export const PikachuGame = () => {
                   </p>
                   <Button
                     variant="secondary"
-                    className="mt-2 border border-white/20 bg-white/90 text-slate-900 shadow-lg"
+                    className="pointer-events-auto mt-2 border border-white/20 bg-white/90 text-slate-900 shadow-lg"
                     onClick={startGame}
                   >
                     Play {mode.name}
