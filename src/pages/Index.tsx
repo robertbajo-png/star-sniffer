@@ -3,8 +3,8 @@ import { PikachuGame } from "@/components/PikachuGame";
 
 const Index = () => {
   useEffect(() => {
-    document.title = "Pikachu Dash – Geometry Style Game";
-    const desc = "Help Pikachu dash through obstacles with flying and gravity modes.";
+    document.title = "Pocket Trails – Cozy Critter Dash";
+    const desc = "Choose Pikachu, Charizard, Gengar, or a laid-back capybara and explore vibrant arcade game modes.";
     let meta = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
     if (!meta) {
       meta = document.createElement("meta");
@@ -25,9 +25,9 @@ const Index = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-foreground">
       <header className="sr-only">
-        <h1>Pikachu Dash - Geometry Style Game</h1>
+        <h1>Pocket Trails – Cozy Critter Dash</h1>
       </header>
       <main className="flex items-center justify-center">
         <PikachuGame />
