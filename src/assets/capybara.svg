@@ -1,0 +1,12 @@
+<svg width="128" height="96" viewBox="0 0 128 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="8" y="34" width="112" height="46" rx="20" fill="#c58d5f"/>
+  <path d="M24 50C24 41.1634 31.1634 34 40 34H96C104.837 34 112 41.1634 112 50V62C112 70.8366 104.837 78 96 78H40C31.1634 78 24 70.8366 24 62V50Z" fill="#dba06a"/>
+  <path d="M28 44C28 41.7909 29.7909 40 32 40H44C46.2091 40 48 41.7909 48 44V54C48 56.2091 46.2091 58 44 58H32C29.7909 58 28 56.2091 28 54V44Z" fill="#c58d5f"/>
+  <ellipse cx="86" cy="52" rx="6" ry="4" fill="#2f1b0e"/>
+  <circle cx="82" cy="48" r="2" fill="#fff"/>
+  <path d="M64 60C62 63 60 65 56 65C52 65 50 63 48 60" stroke="#2f1b0e" stroke-width="3" stroke-linecap="round"/>
+  <path d="M20 54C20 48.4772 24.4772 44 30 44" stroke="#2f1b0e" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="22" cy="30" r="10" fill="#c58d5f"/>
+  <path d="M16 28C16 23.5817 19.5817 20 24 20H32C36.4183 20 40 23.5817 40 28V34C40 38.4183 36.4183 42 32 42H24C19.5817 42 16 38.4183 16 34V28Z" fill="#dba06a"/>
+  <path d="M10 36C10 33.7909 11.7909 32 14 32H20C22.2091 32 24 33.7909 24 36V38C24 40.2091 22.2091 42 20 42H14C11.7909 42 10 40.2091 10 38V36Z" fill="#c58d5f"/>
+</svg>

@@ -1,744 +1,630 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { Card } from "@/components/ui/card";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import pikachuSprite from "@/assets/pikachu.png";
 import gengarSprite from "@/assets/gengar-sprite.png";
 import charizardSprite from "@/assets/charizard-sprite.png";
+import capybaraSprite from "@/assets/capybara.svg";
 
-interface GameObject {
+type GameState = "menu" | "playing" | "gameOver";
+type Ability = "doubleJump" | "glide" | "phase" | "chill";
+
+interface Dimensions {
+  width: number;
+  height: number;
+}
+
+interface GameMode {
+  id: string;
+  name: string;
+  tagline: string;
+  sprite: string;
+  background: string;
+  groundColor: string;
+  accent: string;
+  accentSoft: string;
+  ability: Ability;
+  abilityLabel: string;
+  abilityDescription: string;
+  speed: number;
+  gravity: number;
+  jumpVelocity: number;
+  spawnInterval: number;
+  obstacleHeight: [number, number];
+  difficulty: string;
+}
+
+interface Rect {
   x: number;
   y: number;
   width: number;
   height: number;
 }
 
-interface Spike extends GameObject {
+interface Obstacle extends Rect {
   id: number;
 }
 
-interface FlyingObstacle extends GameObject {
-  id: number;
-  speed: number;
+interface Player extends Rect {
+  velocityY: number;
+  jumpsUsed: number;
 }
 
-interface BackgroundPokemon {
-  id: number;
-  x: number;
-  y: number;
-  sprite: string;
-  size: number;
-  opacity: number;
-}
+const PLAYER_SIZE = 56;
+const GROUND_HEIGHT = 56;
 
-// Responsive game dimensions
-const getGameDimensions = () => {
-  const isMobile = window.innerWidth < 768;
+const computeDimensions = (): Dimensions => {
+  if (typeof window === "undefined") {
+    return { width: 640, height: 360 };
+  }
+
+  const isNarrow = window.innerWidth < 1024;
+  const padding = isNarrow ? 32 : 80;
+  const maxWidth = isNarrow ? 720 : 860;
+
   return {
-    width: isMobile ? Math.min(window.innerWidth - 20, 400) : 800,
-    height: isMobile ? 300 : 400
+    width: Math.max(320, Math.min(window.innerWidth - padding, maxWidth)),
+    height: isNarrow ? 300 : 360
   };
 };
 
-const GROUND_HEIGHT = 50;
-const PLAYER_SIZE = 50;
-const SPIKE_WIDTH = 25;
-const SPIKE_HEIGHT = 30;
-const JUMP_HEIGHT = 120;
-const GAME_SPEED = 2.5;
-const FLYING_OBSTACLE_SIZE = 35;
-const FLYING_MODE_THRESHOLD = 1000;
-const GENGAR_MODE_THRESHOLD = 5000;
-const CHARIZARD_SIZE = 50;
+const randomBetween = (min: number, max: number) => Math.random() * (max - min) + min;
+
+const boxesIntersect = (a: Rect, b: Rect) =>
+  a.x < b.x + b.width &&
+  a.x + a.width > b.x &&
+  a.y < b.y + b.height &&
+  a.height + a.y > b.y;
+
+const GAME_MODES: GameMode[] = [
+  {
+    id: "pikachu",
+    name: "Pikachu Dash",
+    tagline: "Spark-powered sprints through a pastel skyline.",
+    sprite: pikachuSprite,
+    background: "linear-gradient(160deg, #fef3c7 0%, #bfdbfe 55%, #c4b5fd 100%)",
+    groundColor: "linear-gradient(90deg, rgba(30,64,175,0.75) 0%, rgba(14,116,144,0.75) 100%)",
+    accent: "#facc15",
+    accentSoft: "rgba(250, 204, 21, 0.35)",
+    ability: "doubleJump",
+    abilityLabel: "Double Jump",
+    abilityDescription: "Tap jump twice to keep Pikachu airborne for longer streaks.",
+    speed: 3.6,
+    gravity: 0.78,
+    jumpVelocity: 11,
+    spawnInterval: 1450,
+    obstacleHeight: [48, 78],
+    difficulty: "Balanced"
+  },
+  {
+    id: "charizard",
+    name: "Charizard Glide",
+    tagline: "Skim the lava horizon with fiery finesse.",
+    sprite: charizardSprite,
+    background: "linear-gradient(160deg, #fee2e2 0%, #fecaca 42%, #fef9c3 100%)",
+    groundColor: "linear-gradient(90deg, rgba(124,45,18,0.82) 0%, rgba(185,28,28,0.82) 100%)",
+    accent: "#f97316",
+    accentSoft: "rgba(249, 115, 22, 0.32)",
+    ability: "glide",
+    abilityLabel: "Gentle Glide",
+    abilityDescription: "Hold the jump key in mid-air to glide through volcanic thermals.",
+    speed: 4.2,
+    gravity: 0.62,
+    jumpVelocity: 10.5,
+    spawnInterval: 1300,
+    obstacleHeight: [52, 88],
+    difficulty: "Spicy"
+  },
+  {
+    id: "gengar",
+    name: "Gengar Phase",
+    tagline: "Dance between shadows with spectral precision.",
+    sprite: gengarSprite,
+    background: "linear-gradient(170deg, #ede9fe 0%, #c4b5fd 45%, #a5b4fc 100%)",
+    groundColor: "linear-gradient(90deg, rgba(76,29,149,0.82) 0%, rgba(109,40,217,0.82) 100%)",
+    accent: "#8b5cf6",
+    accentSoft: "rgba(139, 92, 246, 0.32)",
+    ability: "phase",
+    abilityLabel: "Shadow Slip",
+    abilityDescription: "A slimmer hitbox lets this ghost slip through tight gaps.",
+    speed: 3.4,
+    gravity: 0.74,
+    jumpVelocity: 10.8,
+    spawnInterval: 1200,
+    obstacleHeight: [56, 96],
+    difficulty: "Tricky"
+  },
+  {
+    id: "capybara",
+    name: "Capybara Cruise",
+    tagline: "A cozy riverbank jog for the chillest companion.",
+    sprite: capybaraSprite,
+    background: "linear-gradient(170deg, #dcfce7 0%, #bbf7d0 45%, #bfdbfe 100%)",
+    groundColor: "linear-gradient(90deg, rgba(20,83,45,0.78) 0%, rgba(4,120,87,0.78) 100%)",
+    accent: "#34d399",
+    accentSoft: "rgba(52, 211, 153, 0.32)",
+    ability: "chill",
+    abilityLabel: "Relaxed Pace",
+    abilityDescription: "Everything moves a touch slower around this serene friend.",
+    speed: 3,
+    gravity: 0.7,
+    jumpVelocity: 10.5,
+    spawnInterval: 1650,
+    obstacleHeight: [44, 72],
+    difficulty: "Calm"
+  }
+];
+
+const abilityControlHints: Record<Ability, string> = {
+  doubleJump: "Press jump twice to trigger the second boost.",
+  glide: "Hold the jump key while falling to glide forward.",
+  phase: "A slimmer hitbox means you can brush past spikes.",
+  chill: "Lean back—everything cruises at a gentler tempo."
+};
 
 export const PikachuGame = () => {
-  const [gameState, setGameState] = useState<'menu' | 'playing' | 'paused' | 'gameOver'>('menu');
-  const [score, setScore] = useState(0);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  const [gameWidth, setGameWidth] = useState(() => getGameDimensions().width);
-  const [gameHeight, setGameHeight] = useState(() => getGameDimensions().height);
-  const [touchStart, setTouchStart] = useState<{x: number, y: number} | null>(null);
+  const [modeId, setModeId] = useState<GameMode["id"]>(GAME_MODES[0].id);
+  const mode = useMemo(
+    () => GAME_MODES.find((entry) => entry.id === modeId) ?? GAME_MODES[0],
+    [modeId]
+  );
 
-  const [player, setPlayer] = useState<GameObject>({
-    x: 100,
-    y: getGameDimensions().height - GROUND_HEIGHT - PLAYER_SIZE,
+  const [dimensions, setDimensions] = useState<Dimensions>(() => computeDimensions());
+  const groundLevel = dimensions.height - GROUND_HEIGHT;
+
+  const [gameState, setGameState] = useState<GameState>("menu");
+  const [score, setScore] = useState(0);
+  const [bestScores, setBestScores] = useState<Record<string, number>>(() =>
+    Object.fromEntries(GAME_MODES.map((entry) => [entry.id, 0]))
+  );
+  const [modeHint, setModeHint] = useState(mode.abilityDescription);
+
+  const playerRef = useRef<Player>({
+    x: 80,
+    y: groundLevel - PLAYER_SIZE,
     width: PLAYER_SIZE,
-    height: PLAYER_SIZE
+    height: PLAYER_SIZE,
+    velocityY: 0,
+    jumpsUsed: 0
   });
 
-  const [spikes, setSpikes] = useState<Spike[]>([]);
-  const [flyingObstacles, setFlyingObstacles] = useState<FlyingObstacle[]>([]);
-  const [isJumping, setIsJumping] = useState(false);
-  const [jumpVelocity, setJumpVelocity] = useState(0);
-  const [currentSpeed, setCurrentSpeed] = useState(GAME_SPEED);
-  const [keys, setKeys] = useState<{[key: string]: boolean}>({});
-  const [isFlying, setIsFlying] = useState(false);
-  const [flyingY, setFlyingY] = useState(0);
-  const [isGengar, setIsGengar] = useState(false);
-  const [gravityUp, setGravityUp] = useState(false);
-  const [flyingModeChangedAt, setFlyingModeChangedAt] = useState<number | null>(null);
-  const [gengarModeChangedAt, setGengarModeChangedAt] = useState<number | null>(null);
-  const [backgroundPokemon, setBackgroundPokemon] = useState<BackgroundPokemon[]>([]);
+  const obstaclesRef = useRef<Obstacle[]>([]);
+  const nextObstacleId = useRef(0);
+  const scoreRef = useRef(0);
+  const keysRef = useRef<Record<string, boolean>>({});
+  const [, setRenderTick] = useState(0);
 
-  const gameLoopRef = useRef<number>();
-  const spikeIdCounter = useRef(0);
-  const flyingObstacleIdCounter = useRef(0);
+  const sparkles = useMemo(
+    () =>
+      Array.from({ length: 16 }, (_, index) => ({
+        id: index,
+        left: Math.random() * 100,
+        top: Math.random() * 100,
+        size: Math.random() * 18 + 8,
+        opacity: Math.random() * 0.25 + 0.15
+      })),
+    []
+  );
 
-  const groundY = gameHeight - GROUND_HEIGHT;
-
-  // Initialize background Pokemon
-  useEffect(() => {
-    const sprites = [
-      pikachuSprite,
-      gengarSprite,
-      charizardSprite
-    ];
-    
-    const pokemon: BackgroundPokemon[] = [];
-    for (let i = 0; i < 8; i++) {
-      pokemon.push({
-        id: i,
-        x: Math.random() * gameWidth,
-        y: Math.random() * (gameHeight - GROUND_HEIGHT - 100) + 50,
-        sprite: sprites[Math.floor(Math.random() * sprites.length)],
-        size: Math.random() * 30 + 25,
-        opacity: Math.random() * 0.2 + 0.1
-      });
-    }
-    setBackgroundPokemon(pokemon);
-  }, [gameWidth, gameHeight]);
-
-  // Handle window resize
-  useEffect(() => {
-    const handleResize = () => {
-      const dimensions = getGameDimensions();
-      const newIsMobile = window.innerWidth < 768;
-      setIsMobile(newIsMobile);
-      setGameWidth(dimensions.width);
-      setGameHeight(dimensions.height);
+  const prepareScene = useCallback(() => {
+    const startingX = Math.min(120, dimensions.width * 0.2);
+    playerRef.current = {
+      x: startingX,
+      y: groundLevel - PLAYER_SIZE,
+      width: PLAYER_SIZE,
+      height: PLAYER_SIZE,
+      velocityY: 0,
+      jumpsUsed: 0
     };
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // Touch controls
-  const handleTouchStart = (e: React.TouchEvent) => {
-    const touch = e.touches[0];
-    setTouchStart({ x: touch.clientX, y: touch.clientY });
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStart) return;
-
-    const touch = e.changedTouches[0];
-    const deltaX = touch.clientX - touchStart.x;
-    const deltaY = touch.clientY - touchStart.y;
-    const minSwipeDistance = 30;
-
-    // Detect tap (short swipe distance)
-    if (Math.abs(deltaX) < minSwipeDistance && Math.abs(deltaY) < minSwipeDistance) {
-      jump();
-    } else if (Math.abs(deltaX) > Math.abs(deltaY)) {
-      // Horizontal swipe
-      if (deltaX > minSwipeDistance) {
-        setKeys(prev => ({ ...prev, ArrowRight: true }));
-        setTimeout(() => setKeys(prev => ({ ...prev, ArrowRight: false })), 150);
-      } else if (deltaX < -minSwipeDistance) {
-        setKeys(prev => ({ ...prev, ArrowLeft: true }));
-        setTimeout(() => setKeys(prev => ({ ...prev, ArrowLeft: false })), 150);
-      }
-    } else {
-      // Vertical swipe (flying mode)
-      if (isFlying) {
-        if (deltaY < -minSwipeDistance) {
-          setKeys(prev => ({ ...prev, ArrowUp: true }));
-          setTimeout(() => setKeys(prev => ({ ...prev, ArrowUp: false })), 150);
-        } else if (deltaY > minSwipeDistance) {
-          setKeys(prev => ({ ...prev, ArrowDown: true }));
-          setTimeout(() => setKeys(prev => ({ ...prev, ArrowDown: false })), 150);
-        }
-      }
-    }
-
-    setTouchStart(null);
-  };
-
-  const resetGame = useCallback(() => {
-    setPlayer({
-      x: 50,
-      y: groundY - PLAYER_SIZE,
-      width: PLAYER_SIZE,
-      height: PLAYER_SIZE
-    });
-    setSpikes([]);
-    setFlyingObstacles([]);
+    obstaclesRef.current = [];
+    nextObstacleId.current = 0;
+    scoreRef.current = 0;
     setScore(0);
-    setIsJumping(false);
-    setJumpVelocity(0);
-    setCurrentSpeed(GAME_SPEED);
-    setIsFlying(false);
-    setFlyingY(0);
-    setIsGengar(false);
-    setGravityUp(false);
-    setFlyingModeChangedAt(null);
-    setGengarModeChangedAt(null);
-    spikeIdCounter.current = 0;
-    flyingObstacleIdCounter.current = 0;
-  }, [groundY]);
+    setModeHint(mode.abilityDescription);
+    setRenderTick((tick) => tick + 1);
+  }, [dimensions.width, groundLevel, mode.abilityDescription]);
 
-  const startGame = () => {
-    resetGame();
-    setGameState('playing');
-  };
+  const startGame = useCallback(() => {
+    prepareScene();
+    setGameState("playing");
+  }, [prepareScene]);
 
+  const endGame = useCallback(() => {
+    setGameState("gameOver");
+    const currentScore = Math.floor(scoreRef.current);
+    setBestScores((prev) => {
+      const best = prev[mode.id] ?? 0;
+      if (currentScore > best) {
+        return { ...prev, [mode.id]: currentScore };
+      }
+      return prev;
+    });
+  }, [mode.id]);
 
   const jump = useCallback(() => {
-    if (gameState === 'playing') {
-      if (isGengar) {
-        // In Gengar mode, clicking switches gravity
-        setGravityUp(prev => !prev);
-      } else if (isFlying) {
-        // In flying mode, allow gravity switching
-        setGravityUp(prev => !prev);
-      } else if (!isJumping) {
-        // Normal jump mode
-        setIsJumping(true);
-        setJumpVelocity(-15);
-      } else {
-        // Allow gravity switching while jumping
-        setJumpVelocity(prev => prev > 0 ? -15 : prev);
-      }
+    if (gameState !== "playing") return;
+
+    const player = playerRef.current;
+    const maxJumps = mode.ability === "doubleJump" ? 2 : 1;
+
+    if (player.jumpsUsed >= maxJumps) return;
+
+    player.velocityY = -mode.jumpVelocity;
+    player.y -= 1;
+    player.jumpsUsed += 1;
+    setRenderTick((tick) => tick + 1);
+  }, [gameState, mode.ability, mode.jumpVelocity]);
+
+  const handlePointerDown = useCallback(() => {
+    if (gameState !== "playing") {
+      startGame();
+      requestAnimationFrame(() => {
+        jump();
+      });
+      return;
     }
-  }, [isJumping, gameState, isFlying, isGengar]);
+    jump();
+  }, [gameState, jump, startGame]);
 
-  const checkCollision = (rect1: GameObject, rect2: GameObject) => {
-    return (
-      rect1.x < rect2.x + rect2.width &&
-      rect1.x + rect1.width > rect2.x &&
-      rect1.y < rect2.y + rect2.height &&
-      rect1.y + rect1.height > rect2.y
-    );
-  };
-
-  // Check if flying mode should be activated
   useEffect(() => {
-    if (score >= FLYING_MODE_THRESHOLD && !isFlying && !isGengar) {
-      setIsFlying(true);
-      setFlyingModeChangedAt(Date.now());
-      setFlyingY(groundY - 150);
-      setPlayer(prev => ({
-        ...prev,
-        y: groundY - 150,
-        width: CHARIZARD_SIZE,
-        height: CHARIZARD_SIZE
-      }));
-    }
-  }, [score, isFlying, groundY, isGengar]);
+    const onKeyDown = (event: KeyboardEvent) => {
+      keysRef.current[event.code] = true;
 
-  // Check if Gengar mode should be activated
-  useEffect(() => {
-    if (score >= GENGAR_MODE_THRESHOLD && !isGengar) {
-      setIsGengar(true);
-      setGengarModeChangedAt(Date.now());
-      setIsFlying(false);
-      setFlyingModeChangedAt(null); // Clear flying mode grace period
-      setFlyingY(0);
-      setPlayer(prev => ({
-        ...prev,
-        y: groundY - (PLAYER_SIZE - 14),
-        width: PLAYER_SIZE - 14,
-        height: PLAYER_SIZE - 14
-      }));
-    }
-  }, [score, isGengar, groundY]);
-
-  // Game loop
-  useEffect(() => {
-    if (gameState !== 'playing') return;
-
-    const gameLoop = () => {
-      setPlayer(prevPlayer => {
-        let newY = prevPlayer.y;
-        let newX = prevPlayer.x;
-        let newJumpVelocity = jumpVelocity;
-
-        // Handle horizontal movement
-        if (keys['ArrowLeft'] || keys['KeyA']) {
-          newX = Math.max(0, newX - 6);
-        }
-        if (keys['ArrowRight'] || keys['KeyD']) {
-          newX = Math.min(gameWidth - (isFlying ? CHARIZARD_SIZE : isGengar ? PLAYER_SIZE - 14 : PLAYER_SIZE), newX + 6);
-        }
-
-        if (isFlying) {
-          // Flying mode controls
-          if (keys['ArrowUp'] || keys['KeyW']) {
-            newY = Math.max(50, newY - 4);
-          }
-          if (keys['ArrowDown'] || keys['KeyS']) {
-            newY = Math.min(groundY - CHARIZARD_SIZE, newY + 4);
-          }
-          setFlyingY(newY);
-        } else if (isGengar) {
-          // Gengar mode - moves between ground and ceiling with gravity switching
-          if (gravityUp) {
-            newY = Math.max(newY - 4, 50); // Move up faster to ceiling
-          } else {
-            newY = Math.min(newY + 4, groundY - (PLAYER_SIZE - 14)); // Move down faster to ground
-          }
-        } else if (isJumping) {
-          newY += newJumpVelocity;
-          newJumpVelocity += 0.5; // gravity
-
-          if (newY >= groundY - PLAYER_SIZE) {
-            newY = groundY - PLAYER_SIZE;
-            setIsJumping(false);
-            setJumpVelocity(0);
-          } else {
-            setJumpVelocity(newJumpVelocity);
-          }
-        }
-
-        return { ...prevPlayer, y: newY, x: newX };
-      });
-
-      // Move spikes and check collisions
-      setSpikes(prevSpikes => {
-        const newSpikes = prevSpikes
-          .map(spike => ({ ...spike, x: spike.x - currentSpeed }))
-          .filter(spike => spike.x + spike.width > 0);
-
-        // Check collisions with player
-        const collision = newSpikes.some(spike => checkCollision(player, spike));
-        if (collision) {
-          setGameState('gameOver');
-        }
-
-        return newSpikes;
-      });
-
-      // Move flying obstacles and check collisions
-      setFlyingObstacles(prevObstacles => {
-        const newObstacles = prevObstacles
-          .map(obstacle => ({ ...obstacle, x: obstacle.x - obstacle.speed }))
-          .filter(obstacle => obstacle.x + obstacle.width > 0);
-
-        // Check collisions with player
-        const collision = newObstacles.some(obstacle => checkCollision(player, obstacle));
-        if (collision) {
-          setGameState('gameOver');
-        }
-
-        return newObstacles;
-      });
-
-      // Add new spikes (more frequent in flying mode)
-      setSpikes(prevSpikes => {
-        const lastSpike = prevSpikes[prevSpikes.length - 1];
-        const spikeDistance = isFlying ? 200 : 350;
-
-        // Check grace periods
-        const isInFlyingGracePeriod = flyingModeChangedAt && (Date.now() - flyingModeChangedAt) < 2000 && isFlying;
-        const isInGengarGracePeriod = gengarModeChangedAt && (Date.now() - gengarModeChangedAt) < 5000 && isGengar;
-
-        if (!isInFlyingGracePeriod && !isInGengarGracePeriod && (!lastSpike || lastSpike.x < gameWidth - spikeDistance)) {
-          const spikes = [];
-
-          // Ground spikes
-          spikes.push({
-            id: spikeIdCounter.current++,
-            x: gameWidth,
-            y: groundY - SPIKE_HEIGHT,
-            width: SPIKE_WIDTH,
-            height: SPIKE_HEIGHT
-          });
-
-          // In flying mode, add ceiling spikes
-          if (isFlying && Math.random() < 0.6) {
-            spikes.push({
-              id: spikeIdCounter.current++,
-              x: gameWidth + (Math.random() * 100),
-              y: 0,
-              width: SPIKE_WIDTH,
-              height: SPIKE_HEIGHT * 2
-            });
-          }
-
-          return [...prevSpikes, ...spikes];
-        }
-        return prevSpikes;
-      });
-
-      // Add new flying obstacles (more in flying mode and even more in Gengar mode)
-      setFlyingObstacles(prevObstacles => {
-        const lastObstacle = prevObstacles[prevObstacles.length - 1];
-        const obstacleDistance = isGengar ? 150 : (isFlying ? 250 : 400);
-
-        // Check grace periods
-        const isInFlyingGracePeriod = flyingModeChangedAt && (Date.now() - flyingModeChangedAt) < 2000 && isFlying;
-        const isInGengarGracePeriod = gengarModeChangedAt && (Date.now() - gengarModeChangedAt) < 5000 && isGengar;
-
-        if (!isInFlyingGracePeriod && !isInGengarGracePeriod && (!lastObstacle || lastObstacle.x < gameWidth - obstacleDistance)) {
-          const obstacles = [];
-
-          if (isGengar) {
-            // Gengar mode - many obstacles at different heights
-            const heights = [50, 100, 150, 200, 250, groundY - 80, groundY - 120, groundY - 160, groundY - 200];
-            const numObstacles = Math.random() < 0.8 ? 3 : 2;
-
-            for (let i = 0; i < numObstacles; i++) {
-              const randomHeight = heights[Math.floor(Math.random() * heights.length)];
-              obstacles.push({
-                id: flyingObstacleIdCounter.current++,
-                x: gameWidth + (i * 60),
-                y: randomHeight,
-                width: FLYING_OBSTACLE_SIZE - 10,
-                height: FLYING_OBSTACLE_SIZE - 10,
-                speed: currentSpeed + Math.random() * 2.5
-              });
-            }
-          } else if (isFlying) {
-            // Multiple height levels in flying mode
-            const heights = [50, 120, 200, groundY - 80, groundY - 120, groundY - 160];
-            const numObstacles = Math.random() < 0.7 ? 2 : 1;
-
-            for (let i = 0; i < numObstacles; i++) {
-              const randomHeight = heights[Math.floor(Math.random() * heights.length)];
-              obstacles.push({
-                id: flyingObstacleIdCounter.current++,
-                x: gameWidth + (i * 80),
-                y: randomHeight,
-                width: FLYING_OBSTACLE_SIZE,
-                height: FLYING_OBSTACLE_SIZE,
-                speed: currentSpeed + Math.random() * 2
-              });
-            }
-          } else {
-            const heights = [groundY - 80, groundY - 120, groundY - 160];
-            const randomHeight = heights[Math.floor(Math.random() * heights.length)];
-            obstacles.push({
-              id: flyingObstacleIdCounter.current++,
-              x: gameWidth,
-              y: randomHeight,
-              width: FLYING_OBSTACLE_SIZE,
-              height: FLYING_OBSTACLE_SIZE,
-              speed: currentSpeed + Math.random() * 1.5
-            });
-          }
-
-          return [...prevObstacles, ...obstacles];
-        }
-        return prevObstacles;
-      });
-
-      // Increase speed over time
-      setCurrentSpeed(prevSpeed => Math.min(prevSpeed + 0.001, 5));
-
-      // Update score (pause during grace periods)
-      const isInFlyingGracePeriod = flyingModeChangedAt && (Date.now() - flyingModeChangedAt) < 2000 && isFlying;
-      const isInGengarGracePeriod = gengarModeChangedAt && (Date.now() - gengarModeChangedAt) < 5000 && isGengar;
-      if (!isInFlyingGracePeriod && !isInGengarGracePeriod) {
-        setScore(prevScore => prevScore + 3);
-      }
-
-      gameLoopRef.current = requestAnimationFrame(gameLoop);
-    };
-
-    gameLoopRef.current = requestAnimationFrame(gameLoop);
-
-    return () => {
-      if (gameLoopRef.current) {
-        cancelAnimationFrame(gameLoopRef.current);
-      }
-    };
-  }, [gameState, isJumping, jumpVelocity, player, score, groundY, currentSpeed, flyingObstacles, keys, isFlying, isGengar, gravityUp]);
-
-  // Controls
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Escape') {
-        e.preventDefault();
-        if (gameState === 'playing') {
-          setGameState('paused');
-        } else if (gameState === 'paused') {
-          setGameState('playing');
-        }
-        return;
-      }
-
-      if (e.code === 'Space' || e.code === 'ArrowUp') {
-        e.preventDefault();
-        if (gameState === 'menu') {
+      if (["Space", "ArrowUp", "KeyW"].includes(event.code)) {
+        event.preventDefault();
+        if (gameState !== "playing") {
           startGame();
+          requestAnimationFrame(() => {
+            jump();
+          });
         } else {
           jump();
         }
       }
-      if (gameState === 'playing') {
-        setKeys(prev => ({ ...prev, [e.code]: true }));
+
+      if (event.code === "KeyR" && gameState === "gameOver") {
+        startGame();
       }
     };
 
-    const handleKeyUp = (e: KeyboardEvent) => {
-      setKeys(prev => ({ ...prev, [e.code]: false }));
+    const onKeyUp = (event: KeyboardEvent) => {
+      keysRef.current[event.code] = false;
     };
 
-    const handleClick = () => {
-      jump();
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    window.addEventListener('click', handleClick);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      window.removeEventListener('click', handleClick);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
     };
-  }, [jump, gameState]);
+  }, [gameState, jump, startGame]);
 
-  if (gameState === 'menu') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-electric bg-grid">
-        <div className="text-center space-y-8">
-          <h1 className="game-title">PIKACHU DASH</h1>
-          <div className="text-cyber text-lg">Avoid the spikes and flying obstacles!</div>
-          <div className="space-y-4">
-            <Button
-              onClick={startGame}
-              className="bg-neon-green text-black border-neon font-bold px-8 py-4 text-lg hover:bg-neon-green/80"
-            >
-              START GAME
-            </Button>
-            <div className="text-muted-foreground">
-              <div className="text-sm mt-2">Press SPACE or click to jump</div>
-              <div className="text-xs mt-1 text-fire">Reach 1000 for FLYING MODE!</div>
-              <div className="text-xs mt-1 text-destructive">Reach 5000 for GENGAR MODE!</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    const handleResize = () => {
+      setDimensions(computeDimensions());
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    prepareScene();
+    setGameState("menu");
+  }, [prepareScene, mode.id, dimensions.height]);
+
+  useEffect(() => {
+    if (gameState !== "playing") return;
+
+    let animationFrame: number;
+    let lastTime = performance.now();
+    let lastSpawn = performance.now();
+
+    const step = (time: number) => {
+      const delta = Math.min(32, time - lastTime);
+      lastTime = time;
+
+      const player = playerRef.current;
+      const gravityModifier = mode.ability === "glide" && keysRef.current["Space"] ? 0.45 : 1;
+      const gravity = mode.gravity * gravityModifier;
+
+      player.velocityY += gravity * (delta / 16.67);
+      player.y += player.velocityY * (delta / 16.67);
+
+      const floorY = groundLevel - PLAYER_SIZE;
+
+      if (player.y > floorY) {
+        player.y = floorY;
+        player.velocityY = 0;
+        player.jumpsUsed = 0;
+      }
+
+      if (player.y < 0) {
+        player.y = 0;
+        player.velocityY = 0;
+      }
+
+      const speedModifier = mode.ability === "chill" ? 0.8 : 1;
+      const distance = mode.speed * speedModifier * (delta / 16.67);
+
+      const movedObstacles = obstaclesRef.current
+        .map((obstacle) => ({ ...obstacle, x: obstacle.x - distance }))
+        .filter((obstacle) => obstacle.x + obstacle.width > -40);
+
+      obstaclesRef.current = movedObstacles;
+
+      if (time - lastSpawn > mode.spawnInterval) {
+        const height = randomBetween(mode.obstacleHeight[0], mode.obstacleHeight[1]);
+        const width = randomBetween(32, 68);
+        const obstacle: Obstacle = {
+          id: nextObstacleId.current++,
+          x: dimensions.width + 48,
+          y: groundLevel - height,
+          width,
+          height
+        };
+
+        obstaclesRef.current = [...obstaclesRef.current, obstacle];
+        lastSpawn = time;
+      }
+
+      const padding = mode.ability === "phase" ? 6 : 0;
+      const playerBox: Rect = {
+        x: player.x + padding,
+        y: player.y + padding,
+        width: player.width - padding * 2,
+        height: player.height - padding * 2
+      };
+
+      const collided = obstaclesRef.current.some((obstacle) => boxesIntersect(playerBox, obstacle));
+
+      if (collided) {
+        endGame();
+        return;
+      }
+
+      scoreRef.current += delta * 0.015 * mode.speed;
+      const roundedScore = Math.floor(scoreRef.current);
+      setScore((prev) => (prev === roundedScore ? prev : roundedScore));
+
+      setRenderTick((tick) => tick + 1);
+      animationFrame = requestAnimationFrame(step);
+    };
+
+    animationFrame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(animationFrame);
+  }, [dimensions.width, endGame, gameState, groundLevel, mode]);
+
+  const currentBest = bestScores[mode.id] ?? 0;
+  const player = playerRef.current;
 
   return (
-    <div className={`flex flex-col items-center justify-center min-h-screen ${isFlying ? 'bg-fire bg-fire-grid' : 'bg-electric bg-grid'}`}>
-      <div className="mb-4 flex gap-8 text-center">
-        <div className="text-cyber">
-          <div className="text-2xl font-bold">{score}</div>
-          <div className="text-sm">SCORE</div>
-          {isFlying && <div className="text-xs text-neon animate-pulse">FLYING MODE!</div>}
-          {isGengar && <div className="text-xs text-destructive animate-pulse">GENGAR MODE!</div>}
-        </div>
-      </div>
+    <div className="relative w-full max-w-6xl px-4 py-12">
+      <div className="pointer-events-none absolute inset-x-0 top-0 mx-auto h-40 max-w-4xl rounded-full bg-primary/30 blur-3xl" />
+      <div className="pointer-events-none absolute -left-24 top-24 h-52 w-52 rounded-full bg-[#6366f1]/20 blur-3xl" />
+      <div className="pointer-events-none absolute -right-12 bottom-10 h-48 w-48 rounded-full bg-[#facc15]/10 blur-3xl" />
 
-      <div
-        className="relative overflow-hidden"
-        style={{ width: gameWidth, height: gameHeight }}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-      >
-        {/* Mobile Pause Button */}
-        {isMobile && (gameState === 'playing' || gameState === 'paused') && (
-          <Button
-            onClick={() => setGameState(gameState === 'playing' ? 'paused' : 'playing')}
-            className="absolute top-2 right-2 z-10 bg-neon/20 border border-neon text-cyber px-3 py-1 text-sm hover:bg-neon/30"
-          >
-            {gameState === 'playing' ? '⏸️' : '▶️'}
-          </Button>
-        )}
+      <Card className="relative overflow-hidden border-white/10 bg-slate-950/75 text-slate-100 shadow-2xl backdrop-blur-xl">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.08),_transparent_55%)]" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-gradient-to-l from-white/10 via-transparent to-transparent" />
 
-        {/* Background Pokemon */}
-        {backgroundPokemon.map(pokemon => (
-          <div
-            key={pokemon.id}
-            className="absolute animate-float"
-            style={{
-              left: pokemon.x,
-              bottom: gameHeight - pokemon.y - pokemon.size,
-              width: pokemon.size,
-              height: pokemon.size,
-              opacity: pokemon.opacity,
-              animationDelay: `${pokemon.id * 0.3}s`
-            }}
-          >
-            <img
-              src={pokemon.sprite}
-              alt="Background Pokemon"
-              className="w-full h-full object-contain"
-            />
-          </div>
-        ))}
-
-        {/* Ground */}
-        <div
-          className="absolute bottom-0 w-full bg-neon-green/20 border-t border-neon-green"
-          style={{ height: GROUND_HEIGHT }}
-        />
-
-        {/* Player (Pikachu or Charizard) */}
-        <div
-          className={`absolute transition-none bg-transparent ${isJumping ? 'animate-float' : ''} ${isFlying ? 'animate-bounce' : ''}`}
-          style={{
-            left: player.x,
-            bottom: gameHeight - player.y - player.height,
-            width: player.width,
-            height: player.height,
-          }}
-        >
-          {isFlying ? (
-            <div className="relative">
-              <img
-                src={charizardSprite}
-                alt="Charizard"
-                className="w-full h-full object-contain animate-pulse-neon bg-transparent"
-              />
-              <img
-                src={pikachuSprite}
-                alt="Pikachu"
-                className="absolute top-2 left-1/2 transform -translate-x-1/2 w-6 h-6 object-contain"
-              />
+        <CardHeader className="relative z-10 space-y-4 pb-4 sm:pb-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 shadow-lg ring-1 ring-white/10">
+                <img src={mode.sprite} alt={mode.name} className="h-14 w-14 object-contain" />
+              </div>
+              <div>
+                <CardTitle className="text-3xl font-semibold sm:text-4xl">
+                  {mode.name}
+                </CardTitle>
+                <CardDescription className="text-base text-slate-200/70">
+                  {mode.tagline}
+                </CardDescription>
+              </div>
             </div>
-          ) : isGengar ? (
-            <img
-              src={gengarSprite}
-              alt="Gengar"
-              className="w-full h-full object-contain animate-pulse-neon bg-transparent"
-            />
-          ) : (
-            <img
-              src={pikachuSprite}
-              alt="Pikachu"
-              className="w-full h-full object-contain animate-pulse-neon bg-transparent"
-            />
-          )}
-        </div>
-
-        {/* Spikes */}
-        {spikes.map(spike => (
-          <div
-            key={spike.id}
-            className="absolute bg-destructive"
-            style={{
-              left: spike.x,
-              bottom: gameHeight - spike.y - spike.height,
-              width: spike.width,
-              height: spike.height,
-              clipPath: spike.y === 0 ? 'polygon(50% 100%, 0% 0%, 100% 0%)' : 'polygon(50% 0%, 0% 100%, 100% 100%)',
-            }}
-          />
-        ))}
-
-        {/* Flying Obstacles */}
-        {flyingObstacles.map(obstacle => (
-          <div
-            key={obstacle.id}
-            className="absolute"
-            style={{
-              left: obstacle.x,
-              bottom: gameHeight - obstacle.y - obstacle.height,
-              width: obstacle.width,
-              height: obstacle.height,
-            }}
-          >
-            <img
-              src={gengarSprite}
-              alt="Gengar"
-              className="w-full h-full object-contain animate-pulse bg-transparent"
-            />
-          </div>
-        ))}
-
-        {gameState === 'paused' && (
-          <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
-            <div className="text-center space-y-4">
-              <h2 className="text-neon text-3xl font-bold">PAUSED</h2>
-              <div className="text-cyber text-lg">Score: {score}</div>
-              <Button
-                onClick={() => setGameState('playing')}
-                className="bg-neon-green text-black border-neon font-bold px-6 py-3 hover:bg-neon-green/80"
+            <div className="flex items-center gap-3 text-sm font-medium text-slate-200">
+              <div
+                className="rounded-full px-4 py-1 shadow-sm"
+                style={{
+                  background: mode.accentSoft,
+                  color: mode.accent
+                }}
               >
-                RESUME
-              </Button>
-              <div className="text-muted-foreground text-sm">Press ESC to resume</div>
+                {mode.abilityLabel}
+              </div>
+              <Badge
+                className="border-transparent px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-900"
+                style={{ background: mode.accent }}
+              >
+                {mode.difficulty}
+              </Badge>
             </div>
           </div>
-        )}
+        </CardHeader>
 
-        {gameState === 'gameOver' && (
-          <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
-            <div className="text-center space-y-4">
-              <h2 className="text-destructive text-3xl font-bold">GAME OVER</h2>
-              <div className="text-cyber text-xl">Final Score: {score}</div>
-              <Button
-                onClick={startGame}
-                className="bg-neon-green text-black border-neon font-bold px-6 py-3 hover:bg-neon-green/80"
-              >
-                PLAY AGAIN
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="mt-4 text-muted-foreground text-center">
-        <div>
-          {isMobile ? (
-            isGengar ? "Tap the screen to switch gravity (Gengar floats up/down)" : (isFlying ? "Tap the screen or use buttons to fly up/down/left/right" : "Tap the screen or use buttons to jump and move")
-          ) : (
-            isGengar ? "Click anywhere or press SPACE to switch gravity (Gengar floats up/down)" : (isFlying ? "Use ARROW KEYS or WASD to fly up/down/left/right" : "Press SPACE or click anywhere to jump")
-          )}
-        </div>
-      </div>
-
-      {/* Mobile Control Buttons */}
-      {isMobile && gameState === 'playing' && (
-        <div className="mt-4 flex flex-col items-center gap-3">
-          {isFlying && (
-            <div className="flex gap-4">
-              <Button
-                onTouchStart={() => setKeys(prev => ({ ...prev, ArrowUp: true }))}
-                onTouchEnd={() => setKeys(prev => ({ ...prev, ArrowUp: false }))}
-                className="bg-neon/20 border border-neon text-cyber px-4 py-2 text-sm"
-              >
-                ↑
-              </Button>
-              <Button
-                onTouchStart={() => setKeys(prev => ({ ...prev, ArrowDown: true }))}
-                onTouchEnd={() => setKeys(prev => ({ ...prev, ArrowDown: false }))}
-                className="bg-neon/20 border border-neon text-cyber px-4 py-2 text-sm"
-              >
-                ↓
-              </Button>
-            </div>
-          )}
-          <div className="flex gap-4">
-            <Button
-              onTouchStart={() => setKeys(prev => ({ ...prev, ArrowLeft: true }))}
-              onTouchEnd={() => setKeys(prev => ({ ...prev, ArrowLeft: false }))}
-              className="bg-neon/20 border border-neon text-cyber px-4 py-2 text-sm"
+        <CardContent className="relative z-10 grid gap-6 pb-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="flex flex-col gap-6">
+            <div
+              className="relative flex h-[320px] w-full cursor-pointer items-end overflow-hidden rounded-3xl border border-white/10 shadow-[0_40px_120px_-60px_rgba(148,163,184,0.7)] transition-transform hover:scale-[1.01]"
+              style={{ background: mode.background }}
+              onPointerDown={handlePointerDown}
             >
-              ←
-            </Button>
-            {!isFlying && (
-              <Button
-                onTouchStart={jump}
-                className="bg-neon-green text-black border-neon font-bold px-6 py-2 text-sm"
-              >
-                JUMP
-              </Button>
-            )}
-            <Button
-              onTouchStart={() => setKeys(prev => ({ ...prev, ArrowRight: true }))}
-              onTouchEnd={() => setKeys(prev => ({ ...prev, ArrowRight: false }))}
-              className="bg-neon/20 border border-neon text-cyber px-4 py-2 text-sm"
-            >
-              →
-            </Button>
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 via-transparent to-transparent" />
+
+              {sparkles.map((sparkle) => (
+                <div
+                  key={sparkle.id}
+                  className="absolute rounded-full bg-white/70 blur-[1px]"
+                  style={{
+                    left: `${sparkle.left}%`,
+                    top: `${sparkle.top}%`,
+                    width: sparkle.size,
+                    height: sparkle.size,
+                    opacity: sparkle.opacity
+                  }}
+                />
+              ))}
+
+              <div
+                className="absolute left-0 right-0"
+                style={{
+                  top: groundLevel,
+                  background: mode.groundColor,
+                  height: GROUND_HEIGHT,
+                  boxShadow: "0 -12px 24px -14px rgba(15,23,42,0.6)"
+                }}
+              />
+
+              {obstaclesRef.current.map((obstacle) => (
+                <div
+                  key={obstacle.id}
+                  className="absolute bottom-0 origin-bottom rounded-2xl border border-white/20 shadow-[0_12px_25px_-15px_rgba(15,23,42,0.75)]"
+                  style={{
+                    left: obstacle.x,
+                    top: obstacle.y,
+                    width: obstacle.width,
+                    height: obstacle.height,
+                    background: `linear-gradient(180deg, ${mode.accent} 0%, rgba(15,23,42,0.8) 100%)`
+                  }}
+                />
+              ))}
+
+              <img
+                src={mode.sprite}
+                alt={mode.name}
+                className="absolute drop-shadow-[0_16px_24px_rgba(15,23,42,0.55)]"
+                style={{
+                  left: player.x,
+                  top: player.y,
+                  width: player.width,
+                  height: player.height
+                }}
+              />
+
+              <div className="pointer-events-none absolute left-4 top-4 flex items-center gap-3">
+                <div className="rounded-full bg-slate-950/50 px-4 py-1 text-sm font-semibold text-white shadow-lg backdrop-blur">
+                  Score {score.toString().padStart(3, "0")}
+                </div>
+                <div className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-900">
+                  Best {currentBest.toString().padStart(3, "0")}
+                </div>
+              </div>
+
+              {gameState !== "playing" && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/60 text-center backdrop-blur-sm">
+                  <p className="text-lg font-semibold uppercase tracking-[0.3em] text-white/80">
+                    {gameState === "menu" ? "Tap to Start" : "You got this!"}
+                  </p>
+                  <p className="max-w-xs text-sm text-slate-200/80">
+                    {gameState === "menu"
+                      ? "Press space, click, or tap to leap into action."
+                      : "Press space or tap to dash again."}
+                  </p>
+                  <Button
+                    variant="secondary"
+                    className="mt-2 border border-white/20 bg-white/90 text-slate-900 shadow-lg"
+                    onClick={startGame}
+                  >
+                    Play {mode.name}
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+
+          <aside className="flex flex-col gap-6">
+            <section className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-[0_25px_60px_-45px_rgba(15,23,42,0.9)] backdrop-blur">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-300">
+                Game Modes
+              </h3>
+              <div className="mt-4 grid gap-3">
+                {GAME_MODES.map((entry) => {
+                  const selected = entry.id === mode.id;
+                  return (
+                    <button
+                      key={entry.id}
+                      onClick={() => setModeId(entry.id)}
+                      className={cn(
+                        "flex items-center gap-4 rounded-2xl border px-4 py-3 text-left transition-all",
+                        "hover:border-white/40 hover:bg-white/15",
+                        selected
+                          ? "border-transparent bg-white/60 text-slate-900 shadow-[0_18px_55px_-35px_rgba(15,23,42,0.9)]"
+                          : "border-white/10 bg-white/5 text-slate-200"
+                      )}
+                      style={
+                        selected
+                          ? {
+                              boxShadow: `0 20px 45px -30px ${entry.accent}`
+                            }
+                          : undefined
+                      }
+                    >
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/70">
+                        <img src={entry.sprite} alt="" className="h-10 w-10 object-contain" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-base font-semibold">{entry.name}</p>
+                        <p className="text-xs text-slate-900/70">
+                          {entry.abilityLabel}
+                        </p>
+                      </div>
+                      <Badge
+                        className="border-transparent text-[11px] font-semibold uppercase tracking-wide"
+                        style={{
+                          background: selected ? entry.accent : entry.accentSoft,
+                          color: selected ? "#0f172a" : entry.accent
+                        }}
+                      >
+                        {entry.difficulty}
+                      </Badge>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="rounded-3xl border border-white/10 bg-slate-950/40 p-6 text-sm leading-relaxed text-slate-200 shadow-[0_30px_80px_-60px_rgba(15,23,42,0.95)] backdrop-blur">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-300">
+                How to play
+              </h3>
+              <ul className="mt-4 space-y-3">
+                <li className="flex items-start gap-3">
+                  <span className="mt-1 h-2 w-2 rounded-full" style={{ background: mode.accent }} />
+                  <span>
+                    <span className="font-semibold text-white">Jump</span> — Press Space / W or tap on the arena to hop over obstacles.
+                  </span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="mt-1 h-2 w-2 rounded-full bg-white/50" />
+                  <span>
+                    <span className="font-semibold text-white">Ability</span> — {abilityControlHints[mode.ability]}
+                  </span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="mt-1 h-2 w-2 rounded-full bg-white/30" />
+                  <span>
+                    <span className="font-semibold text-white">Restart</span> — Hit <kbd className="rounded bg-white/20 px-1 text-xs">R</kbd> after a tumble to replay instantly.
+                  </span>
+                </li>
+              </ul>
+              <p className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-slate-200/80">
+                {modeHint}
+              </p>
+            </section>
+          </aside>
+        </CardContent>
+      </Card>
     </div>
   );
 };
