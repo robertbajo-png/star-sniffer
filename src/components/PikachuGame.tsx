@@ -35,10 +35,12 @@ interface GameMode {
   abilityLabel: string;
   abilityDescription: string;
   speed: number;
+  speedRamp: number;
   gravity: number;
   jumpVelocity: number;
-  spawnInterval: number;
+  spawnIntervalRange: [number, number];
   obstacleHeight: [number, number];
+  hitboxPadding?: number;
   difficulty: string;
 }
 
@@ -67,16 +69,20 @@ const computeDimensions = (): Dimensions => {
   }
 
   const isNarrow = window.innerWidth < 1024;
-  const padding = isNarrow ? 32 : 80;
-  const maxWidth = isNarrow ? 720 : 860;
+  const padding = isNarrow ? 28 : 80;
+  const maxWidth = isNarrow ? 720 : 900;
+  const width = Math.max(320, Math.min(window.innerWidth - padding, maxWidth));
+  const height = Math.max(
+    260,
+    Math.min(Math.round(width * (isNarrow ? 0.6 : 0.55)), isNarrow ? 340 : 420)
+  );
 
-  return {
-    width: Math.max(320, Math.min(window.innerWidth - padding, maxWidth)),
-    height: isNarrow ? 300 : 360
-  };
+  return { width, height };
 };
 
 const randomBetween = (min: number, max: number) => Math.random() * (max - min) + min;
+const rollSpawnDelay = (entry: GameMode) =>
+  randomBetween(entry.spawnIntervalRange[0], entry.spawnIntervalRange[1]);
 
 const boxesIntersect = (a: Rect, b: Rect) =>
   a.x < b.x + b.width &&
@@ -98,9 +104,10 @@ const GAME_MODES: GameMode[] = [
     abilityLabel: "Double Jump",
     abilityDescription: "Tap jump twice to keep Pikachu airborne for longer streaks.",
     speed: 3.6,
+    speedRamp: 0.032,
     gravity: 0.78,
     jumpVelocity: 11,
-    spawnInterval: 1450,
+    spawnIntervalRange: [1300, 1700],
     obstacleHeight: [48, 78],
     difficulty: "Balanced"
   },
@@ -117,9 +124,10 @@ const GAME_MODES: GameMode[] = [
     abilityLabel: "Gentle Glide",
     abilityDescription: "Hold the jump key in mid-air to glide through volcanic thermals.",
     speed: 4.2,
+    speedRamp: 0.038,
     gravity: 0.62,
     jumpVelocity: 10.5,
-    spawnInterval: 1300,
+    spawnIntervalRange: [1125, 1500],
     obstacleHeight: [52, 88],
     difficulty: "Spicy"
   },
@@ -136,10 +144,12 @@ const GAME_MODES: GameMode[] = [
     abilityLabel: "Shadow Slip",
     abilityDescription: "A slimmer hitbox lets this ghost slip through tight gaps.",
     speed: 3.4,
+    speedRamp: 0.028,
     gravity: 0.74,
     jumpVelocity: 10.8,
-    spawnInterval: 1200,
+    spawnIntervalRange: [1050, 1380],
     obstacleHeight: [56, 96],
+    hitboxPadding: 6,
     difficulty: "Tricky"
   },
   {
@@ -155,9 +165,10 @@ const GAME_MODES: GameMode[] = [
     abilityLabel: "Relaxed Pace",
     abilityDescription: "Everything moves a touch slower around this serene friend.",
     speed: 3,
+    speedRamp: 0.018,
     gravity: 0.7,
     jumpVelocity: 10.5,
-    spawnInterval: 1650,
+    spawnIntervalRange: [1500, 1900],
     obstacleHeight: [44, 72],
     difficulty: "Calm"
   }
@@ -170,6 +181,29 @@ const abilityControlHints: Record<Ability, string> = {
   chill: "Lean back—everything cruises at a gentler tempo."
 };
 
+const abilityMilestoneHints: Record<Ability, string[]> = {
+  doubleJump: [
+    "Delay the second hop to stretch over taller stacks.",
+    "Feather quick taps to maintain aerial rhythm.",
+    "Every 20 seconds the pace rises—stay light on your feet."
+  ],
+  glide: [
+    "Hold the key just after lift-off to skim hazards.",
+    "Short glides reset faster—pulse the button between obstacles.",
+    "Ride thermals low to prep for the next updraft."
+  ],
+  phase: [
+    "Line up with gaps early so the slim form can squeeze through.",
+    "Brush near pillars to keep combos alive—trust the shadow slip.",
+    "Watch the purple glow; it grows as the realm quickens."
+  ],
+  chill: [
+    "Your calm aura slows the world—breathe between jumps.",
+    "Use the extra beat to plan double obstacle clears.",
+    "Stacks grow taller later—keep the tempo cozy."
+  ]
+};
+
 export const PikachuGame = () => {
   const [modeId, setModeId] = useState<GameMode["id"]>(GAME_MODES[0].id);
   const mode = useMemo(
@@ -180,12 +214,15 @@ export const PikachuGame = () => {
   const [dimensions, setDimensions] = useState<Dimensions>(() => computeDimensions());
   const groundLevel = dimensions.height - GROUND_HEIGHT;
 
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [gameState, setGameState] = useState<GameState>("menu");
   const [score, setScore] = useState(0);
   const [bestScores, setBestScores] = useState<Record<string, number>>(() =>
     Object.fromEntries(GAME_MODES.map((entry) => [entry.id, 0]))
   );
   const [modeHint, setModeHint] = useState(mode.abilityDescription);
+  const [abilityBanner, setAbilityBanner] = useState(abilityControlHints[mode.ability]);
+  const [progression, setProgression] = useState(0);
 
   const playerRef = useRef<Player>({
     x: 80,
@@ -200,7 +237,23 @@ export const PikachuGame = () => {
   const nextObstacleId = useRef(0);
   const scoreRef = useRef(0);
   const keysRef = useRef<Record<string, boolean>>({});
+  const abilityMessageRef = useRef(abilityControlHints[mode.ability]);
+  const milestoneRef = useRef(0);
+  const elapsedRef = useRef(0);
+  const spawnTimerRef = useRef(0);
   const [, setRenderTick] = useState(0);
+
+  const updateAbilityBanner = useCallback((message: string) => {
+    if (abilityMessageRef.current === message) return;
+    abilityMessageRef.current = message;
+    setAbilityBanner(message);
+  }, []);
+
+  useEffect(() => {
+    abilityMessageRef.current = abilityControlHints[mode.ability];
+    setAbilityBanner(abilityControlHints[mode.ability]);
+    setModeHint(mode.abilityDescription);
+  }, [mode]);
 
   const sparkles = useMemo(
     () =>
@@ -228,10 +281,17 @@ export const PikachuGame = () => {
     obstaclesRef.current = [];
     nextObstacleId.current = 0;
     scoreRef.current = 0;
+    milestoneRef.current = 0;
+    elapsedRef.current = 0;
+    spawnTimerRef.current = rollSpawnDelay(mode);
     setScore(0);
     setModeHint(mode.abilityDescription);
+    const introMessage = abilityControlHints[mode.ability];
+    abilityMessageRef.current = introMessage;
+    setAbilityBanner(introMessage);
+    setProgression(0);
     setRenderTick((tick) => tick + 1);
-  }, [dimensions.width, groundLevel, mode.abilityDescription]);
+  }, [dimensions.width, groundLevel, mode]);
 
   const startGame = useCallback(() => {
     prepareScene();
@@ -310,6 +370,18 @@ export const PikachuGame = () => {
   }, [gameState, jump, startGame]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePreference = () => setPrefersReducedMotion(media.matches);
+
+    updatePreference();
+    media.addEventListener("change", updatePreference);
+
+    return () => media.removeEventListener("change", updatePreference);
+  }, []);
+
+  useEffect(() => {
     const handleResize = () => {
       setDimensions(computeDimensions());
     };
@@ -321,22 +393,27 @@ export const PikachuGame = () => {
   useEffect(() => {
     prepareScene();
     setGameState("menu");
-  }, [prepareScene, mode.id, dimensions.height]);
+  }, [prepareScene]);
 
   useEffect(() => {
     if (gameState !== "playing") return;
 
     let animationFrame: number;
     let lastTime = performance.now();
-    let lastSpawn = performance.now();
 
     const step = (time: number) => {
-      const delta = Math.min(32, time - lastTime);
+      const deltaRaw = Math.min(32, time - lastTime);
+      const delta = prefersReducedMotion ? Math.min(20, deltaRaw) : deltaRaw;
       lastTime = time;
 
       const player = playerRef.current;
-      const gravityModifier = mode.ability === "glide" && keysRef.current["Space"] ? 0.45 : 1;
+      const isHoldingJump =
+        keysRef.current["Space"] || keysRef.current["ArrowUp"] || keysRef.current["KeyW"];
+      const gravityModifier = mode.ability === "glide" && isHoldingJump ? 0.45 : 1;
       const gravity = mode.gravity * gravityModifier;
+
+      elapsedRef.current += delta;
+      spawnTimerRef.current -= delta;
 
       player.velocityY += gravity * (delta / 16.67);
       player.y += player.velocityY * (delta / 16.67);
@@ -354,8 +431,16 @@ export const PikachuGame = () => {
         player.velocityY = 0;
       }
 
+      const rampBase = 1 + (elapsedRef.current / 1000) * mode.speedRamp;
+      const rampMultiplier = Math.min(
+        1.75,
+        prefersReducedMotion ? 1 + (rampBase - 1) * 0.6 : rampBase
+      );
+      const progressValue = Math.min(1, Math.max(0, (rampMultiplier - 1) / 0.75));
+      setProgression((prev) => (Math.abs(prev - progressValue) > 0.02 ? progressValue : prev));
+
       const speedModifier = mode.ability === "chill" ? 0.8 : 1;
-      const distance = mode.speed * speedModifier * (delta / 16.67);
+      const distance = mode.speed * speedModifier * rampMultiplier * (delta / 16.67);
 
       const movedObstacles = obstaclesRef.current
         .map((obstacle) => ({ ...obstacle, x: obstacle.x - distance }))
@@ -363,7 +448,7 @@ export const PikachuGame = () => {
 
       obstaclesRef.current = movedObstacles;
 
-      if (time - lastSpawn > mode.spawnInterval) {
+      if (spawnTimerRef.current <= 0) {
         const height = randomBetween(mode.obstacleHeight[0], mode.obstacleHeight[1]);
         const width = randomBetween(32, 68);
         const obstacle: Obstacle = {
@@ -375,10 +460,10 @@ export const PikachuGame = () => {
         };
 
         obstaclesRef.current = [...obstaclesRef.current, obstacle];
-        lastSpawn = time;
+        spawnTimerRef.current = rollSpawnDelay(mode);
       }
 
-      const padding = mode.ability === "phase" ? 6 : 0;
+      const padding = mode.hitboxPadding ?? 0;
       const playerBox: Rect = {
         x: player.x + padding,
         y: player.y + padding,
@@ -393,9 +478,51 @@ export const PikachuGame = () => {
         return;
       }
 
-      scoreRef.current += delta * 0.015 * mode.speed;
+      scoreRef.current += delta * 0.015 * mode.speed * rampMultiplier;
       const roundedScore = Math.floor(scoreRef.current);
       setScore((prev) => (prev === roundedScore ? prev : roundedScore));
+
+      const milestoneThresholds = [24, 60, 110];
+      const nextMilestone = milestoneRef.current;
+      if (nextMilestone < milestoneThresholds.length && scoreRef.current >= milestoneThresholds[nextMilestone]) {
+        const hints = abilityMilestoneHints[mode.ability];
+        const hint = hints[Math.min(nextMilestone, hints.length - 1)] ?? mode.abilityDescription;
+        setModeHint(hint);
+        milestoneRef.current += 1;
+      }
+
+      if (mode.ability === "doubleJump") {
+        const maxJumps = 2;
+        if (player.jumpsUsed >= maxJumps) {
+          updateAbilityBanner("Touch down to recharge your double jump.");
+        } else if (player.jumpsUsed === 0) {
+          updateAbilityBanner("Double jump primed! Time the second boost late.");
+        } else {
+          updateAbilityBanner("Second jump ready—clear that tall stack.");
+        }
+      } else if (mode.ability === "glide") {
+        const gliding = isHoldingJump && player.velocityY > 0;
+        updateAbilityBanner(
+          gliding
+            ? "Gliding—ease the press to descend."
+            : "Hold jump mid-air to ride the thermals."
+        );
+      } else if (mode.ability === "phase") {
+        const nearby = obstaclesRef.current.some(
+          (obstacle) => obstacle.x - player.x < 140 && obstacle.x + obstacle.width > player.x
+        );
+        updateAbilityBanner(
+          nearby
+            ? "Thread the gap—your shadow form is slim."
+            : "Line up early for the next slip-through."
+        );
+      } else if (mode.ability === "chill") {
+        updateAbilityBanner(
+          rampMultiplier > 1.25
+            ? "The world stirs—keep the calm cadence."
+            : "Everything moves softer—plan your leaps."
+        );
+      }
 
       setRenderTick((tick) => tick + 1);
       animationFrame = requestAnimationFrame(step);
@@ -403,7 +530,7 @@ export const PikachuGame = () => {
 
     animationFrame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(animationFrame);
-  }, [dimensions.width, endGame, gameState, groundLevel, mode]);
+  }, [dimensions.width, endGame, gameState, groundLevel, mode, prefersReducedMotion, updateAbilityBanner]);
 
   const currentBest = bestScores[mode.id] ?? 0;
   const player = playerRef.current;
@@ -512,14 +639,31 @@ export const PikachuGame = () => {
                 }}
               />
 
-              <div className="pointer-events-none absolute left-4 top-4 flex items-center gap-3">
-                <div className="rounded-full bg-slate-950/50 px-4 py-1 text-sm font-semibold text-white shadow-lg backdrop-blur">
-                  Score {score.toString().padStart(3, "0")}
+              <div className="pointer-events-none absolute left-4 top-4 flex w-56 flex-col gap-2">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-full bg-slate-950/50 px-4 py-1 text-sm font-semibold text-white shadow-lg backdrop-blur">
+                    Score {score.toString().padStart(3, "0")}
+                  </div>
+                  <div className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-900">
+                    Best {currentBest.toString().padStart(3, "0")}
+                  </div>
                 </div>
-                <div className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-900">
-                  Best {currentBest.toString().padStart(3, "0")}
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="h-full rounded-full transition-[width] duration-200 ease-out"
+                    style={{ width: `${Math.round(progression * 100)}%`, background: mode.accent }}
+                  />
                 </div>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.3em] text-white/60">
+                  Pace boost
+                </span>
               </div>
+
+              {abilityBanner && (
+                <div className="pointer-events-none absolute left-1/2 top-5 -translate-x-1/2 rounded-full bg-slate-950/60 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.32em] text-white shadow-lg backdrop-blur">
+                  {abilityBanner}
+                </div>
+              )}
 
               {gameState !== "playing" && (
                 <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/60 text-center backdrop-blur-sm">
@@ -530,6 +674,9 @@ export const PikachuGame = () => {
                     {gameState === "menu"
                       ? "Press space, click, or tap to leap into action."
                       : "Press space or tap to dash again."}
+                  </p>
+                  <p className="pointer-events-none rounded-full bg-white/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.26em] text-white/80">
+                    {mode.abilityLabel}: {abilityControlHints[mode.ability]}
                   </p>
                   <Button
                     variant="secondary"
