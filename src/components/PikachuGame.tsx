@@ -583,7 +583,7 @@ export const PikachuGame = () => {
         <CardContent className="relative z-10 grid gap-6 pb-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <div className="flex flex-col gap-6">
             <div
-              className="relative flex h-[320px] w-full cursor-pointer items-end overflow-hidden rounded-3xl border border-white/10 shadow-[0_40px_120px_-60px_rgba(148,163,184,0.7)] transition-transform hover:scale-[1.01]"
+              className="relative flex h-[480px] w-full cursor-pointer items-end overflow-hidden rounded-3xl border border-white/10 shadow-[0_40px_120px_-60px_rgba(148,163,184,0.7)] transition-transform hover:scale-[1.01]"
               style={{ background: mode.background }}
               onPointerDown={handlePointerDown}
             >
@@ -630,7 +630,7 @@ export const PikachuGame = () => {
               <img
                 src={mode.sprite}
                 alt={mode.name}
-                className="absolute drop-shadow-[0_16px_24px_rgba(15,23,42,0.55)]"
+                className="absolute drop-shadow-[0_16px_24px_rgba(15,23,42,0.55)] z-10"
                 style={{
                   left: player.x,
                   top: player.y,
@@ -666,7 +666,7 @@ export const PikachuGame = () => {
               )}
 
               {gameState !== "playing" && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/30 text-center backdrop-blur-[2px]">
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/30 text-center backdrop-blur-[2px] z-20">
                   <div className="pointer-events-none flex flex-col items-center gap-3">
                     <p className="text-lg font-semibold uppercase tracking-[0.3em] text-white drop-shadow-lg">
                       {gameState === "menu" ? mode.name : "You got this!"}
