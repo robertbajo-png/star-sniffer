@@ -103,12 +103,12 @@ const GAME_MODES: GameMode[] = [
     ability: "doubleJump",
     abilityLabel: "Double Jump",
     abilityDescription: "Tap jump twice to keep Pikachu airborne for longer streaks.",
-    speed: 3.2,
-    speedRamp: 0.025,
-    gravity: 0.78,
-    jumpVelocity: 11,
-    spawnIntervalRange: [1600, 2100],
-    obstacleHeight: [40, 65],
+    speed: 3.0,
+    speedRamp: 0.022,
+    gravity: 0.75,
+    jumpVelocity: 11.5,
+    spawnIntervalRange: [1700, 2200],
+    obstacleHeight: [38, 62],
     difficulty: "Balanced"
   },
   {
@@ -123,12 +123,12 @@ const GAME_MODES: GameMode[] = [
     ability: "glide",
     abilityLabel: "Gentle Glide",
     abilityDescription: "Hold the jump key in mid-air to glide through volcanic thermals.",
-    speed: 3.6,
-    speedRamp: 0.03,
+    speed: 3.3,
+    speedRamp: 0.026,
     gravity: 0.62,
-    jumpVelocity: 10.5,
-    spawnIntervalRange: [1500, 1900],
-    obstacleHeight: [42, 72],
+    jumpVelocity: 10.8,
+    spawnIntervalRange: [1600, 2000],
+    obstacleHeight: [40, 68],
     difficulty: "Spicy"
   },
   {
@@ -143,13 +143,13 @@ const GAME_MODES: GameMode[] = [
     ability: "phase",
     abilityLabel: "Shadow Slip",
     abilityDescription: "A slimmer hitbox lets this ghost slip through tight gaps.",
-    speed: 3.2,
-    speedRamp: 0.024,
-    gravity: 0.74,
-    jumpVelocity: 10.8,
-    spawnIntervalRange: [1400, 1750],
-    obstacleHeight: [46, 78],
-    hitboxPadding: 6,
+    speed: 3.1,
+    speedRamp: 0.023,
+    gravity: 0.72,
+    jumpVelocity: 11.0,
+    spawnIntervalRange: [1550, 1950],
+    obstacleHeight: [42, 72],
+    hitboxPadding: 8,
     difficulty: "Tricky"
   },
   {
@@ -164,12 +164,12 @@ const GAME_MODES: GameMode[] = [
     ability: "chill",
     abilityLabel: "Relaxed Pace",
     abilityDescription: "Everything moves a touch slower around this serene friend.",
-    speed: 2.8,
-    speedRamp: 0.015,
-    gravity: 0.7,
-    jumpVelocity: 10.5,
-    spawnIntervalRange: [1800, 2300],
-    obstacleHeight: [38, 62],
+    speed: 2.6,
+    speedRamp: 0.014,
+    gravity: 0.68,
+    jumpVelocity: 10.8,
+    spawnIntervalRange: [1900, 2500],
+    obstacleHeight: [35, 58],
     difficulty: "Calm"
   }
 ];
@@ -409,7 +409,7 @@ export const PikachuGame = () => {
       const player = playerRef.current;
       const isHoldingJump =
         keysRef.current["Space"] || keysRef.current["ArrowUp"] || keysRef.current["KeyW"];
-      const gravityModifier = mode.ability === "glide" && isHoldingJump ? 0.45 : 1;
+      const gravityModifier = mode.ability === "glide" && isHoldingJump && player.velocityY > 0 ? 0.35 : 1;
       const gravity = mode.gravity * gravityModifier;
 
       elapsedRef.current += delta;
@@ -639,54 +639,72 @@ export const PikachuGame = () => {
                 }}
               />
 
-              <div className="pointer-events-none absolute left-4 top-4 flex w-56 flex-col gap-2">
+              <div className="pointer-events-none absolute left-4 top-4 flex w-64 flex-col gap-2">
                 <div className="flex items-center gap-3">
-                  <div className="rounded-full bg-slate-950/50 px-4 py-1 text-sm font-semibold text-white shadow-lg backdrop-blur">
-                    Score {score.toString().padStart(3, "0")}
+                  <div className="rounded-xl bg-slate-950/80 border border-white/20 px-4 py-2 text-base font-bold text-white shadow-xl backdrop-blur-md">
+                    Score: {score.toString().padStart(3, "0")}
                   </div>
-                  <div className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-900">
-                    Best {currentBest.toString().padStart(3, "0")}
+                  <div className="rounded-xl px-3 py-2 text-sm font-bold uppercase tracking-[0.15em] shadow-xl backdrop-blur-md border-2"
+                    style={{ 
+                      backgroundColor: mode.accentSoft,
+                      color: mode.accent,
+                      borderColor: mode.accent
+                    }}
+                  >
+                    Best: {currentBest.toString().padStart(3, "0")}
                   </div>
                 </div>
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-950/50 border border-white/20 backdrop-blur-sm">
                   <div
-                    className="h-full rounded-full transition-[width] duration-200 ease-out"
+                    className="h-full rounded-full transition-[width] duration-200 ease-out shadow-lg"
                     style={{ width: `${Math.round(progression * 100)}%`, background: mode.accent }}
                   />
                 </div>
-                <span className="text-[10px] font-semibold uppercase tracking-[0.3em] text-white/60">
-                  Pace boost
+                <span className="text-[11px] font-bold uppercase tracking-[0.25em] text-white drop-shadow-lg">
+                  Speed Boost
                 </span>
               </div>
 
               {abilityBanner && (
-                <div className="pointer-events-none absolute left-1/2 top-5 -translate-x-1/2 rounded-full bg-slate-950/60 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.32em] text-white shadow-lg backdrop-blur">
+                <div className="pointer-events-none absolute left-1/2 top-6 -translate-x-1/2 rounded-xl bg-slate-950/80 border border-white/30 px-5 py-2 text-xs font-bold uppercase tracking-[0.25em] text-white shadow-2xl backdrop-blur-lg">
                   {abilityBanner}
                 </div>
               )}
 
               {gameState !== "playing" && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/30 text-center backdrop-blur-[2px] z-20">
-                  <div className="pointer-events-none flex flex-col items-center gap-3">
-                    <p className="text-lg font-semibold uppercase tracking-[0.3em] text-white drop-shadow-lg">
-                      {gameState === "menu" ? mode.name : "You got this!"}
-                    </p>
-                    <p className="max-w-xs text-sm text-slate-200 drop-shadow">
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-slate-950/50 text-center backdrop-blur-md z-20">
+                  <div className="pointer-events-none flex flex-col items-center gap-4 max-w-md px-6">
+                    <div className="rounded-2xl bg-slate-950/80 px-6 py-3 backdrop-blur-xl border border-white/20">
+                      <p className="text-2xl font-bold uppercase tracking-[0.2em] text-white drop-shadow-2xl">
+                        {gameState === "menu" ? mode.name : "Game Over!"}
+                      </p>
+                    </div>
+                    <p className="text-base font-medium text-white drop-shadow-lg bg-slate-950/60 px-5 py-2 rounded-xl backdrop-blur-sm">
                       {gameState === "menu"
-                        ? "Press space, click, or tap to leap into action."
-                        : "Press space or tap to dash again."}
+                        ? "Press space, click, or tap to start"
+                        : `Final Score: ${score} — Press space to retry`}
                     </p>
-                    <p className="rounded-full bg-white/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.26em] text-white/90 backdrop-blur-sm">
-                      {mode.abilityLabel}: {abilityControlHints[mode.ability]}
-                    </p>
+                    <div className="rounded-xl bg-white/15 backdrop-blur-md px-5 py-3 border border-white/30 shadow-2xl">
+                      <p className="text-sm font-bold uppercase tracking-[0.2em] text-white mb-1.5">
+                        {mode.abilityLabel}
+                      </p>
+                      <p className="text-xs font-medium text-white/90">
+                        {abilityControlHints[mode.ability]}
+                      </p>
+                    </div>
                   </div>
                   <Button
-                    variant="secondary"
+                    variant="default"
                     size="lg"
-                    className="pointer-events-auto mt-2 border border-white/20 bg-white/95 text-slate-900 shadow-xl hover:bg-white hover:scale-105 transition-all"
+                    className="pointer-events-auto mt-3 border-2 shadow-2xl font-bold text-base px-8 py-6 transition-all hover:scale-110"
+                    style={{
+                      background: mode.accent,
+                      borderColor: mode.accent,
+                      color: '#0f172a'
+                    }}
                     onClick={startGame}
                   >
-                    Play {mode.name}
+                    {gameState === "menu" ? "Start Game" : "Play Again"}
                   </Button>
                 </div>
               )}
