@@ -666,21 +666,24 @@ export const PikachuGame = () => {
               )}
 
               {gameState !== "playing" && (
-                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/60 text-center backdrop-blur-sm">
-                  <p className="text-lg font-semibold uppercase tracking-[0.3em] text-white/80">
-                    {gameState === "menu" ? "Tap to Start" : "You got this!"}
-                  </p>
-                  <p className="max-w-xs text-sm text-slate-200/80">
-                    {gameState === "menu"
-                      ? "Press space, click, or tap to leap into action."
-                      : "Press space or tap to dash again."}
-                  </p>
-                  <p className="pointer-events-none rounded-full bg-white/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.26em] text-white/80">
-                    {mode.abilityLabel}: {abilityControlHints[mode.ability]}
-                  </p>
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/30 text-center backdrop-blur-[2px]">
+                  <div className="pointer-events-none flex flex-col items-center gap-3">
+                    <p className="text-lg font-semibold uppercase tracking-[0.3em] text-white drop-shadow-lg">
+                      {gameState === "menu" ? mode.name : "You got this!"}
+                    </p>
+                    <p className="max-w-xs text-sm text-slate-200 drop-shadow">
+                      {gameState === "menu"
+                        ? "Press space, click, or tap to leap into action."
+                        : "Press space or tap to dash again."}
+                    </p>
+                    <p className="rounded-full bg-white/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.26em] text-white/90 backdrop-blur-sm">
+                      {mode.abilityLabel}: {abilityControlHints[mode.ability]}
+                    </p>
+                  </div>
                   <Button
                     variant="secondary"
-                    className="pointer-events-auto mt-2 border border-white/20 bg-white/90 text-slate-900 shadow-lg"
+                    size="lg"
+                    className="pointer-events-auto mt-2 border border-white/20 bg-white/95 text-slate-900 shadow-xl hover:bg-white hover:scale-105 transition-all"
                     onClick={startGame}
                   >
                     Play {mode.name}
